@@ -1,6 +1,56 @@
 import socket
 import ssl
 import sys
+import tkinter
+
+HSTEP, VSTEP = 13, 18
+WIDTH, HEIGHT = 800, 600
+SCROLL_STEP = 100
+
+
+def layout(text):
+    display_list = []
+    cursor_x, cursor_y = HSTEP, VSTEP
+    for c in text:
+        display_list.append((cursor_x, cursor_y, c))
+        cursor_x += HSTEP
+        if cursor_x >= WIDTH - HSTEP:
+            cursor_x = HSTEP
+            cursor_y += VSTEP
+    return display_list
+
+
+class Browser:
+    def __init__(self):
+        self.window = tkinter.Tk()
+        self.window.title("toybrowser")
+        self.canvas = tkinter.Canvas(self.window, width=WIDTH, height=HEIGHT)
+        self.canvas.pack()
+        self.display_list = []
+        self.scroll = 0
+        self.window.bind("<Down>", self.scrolldown)
+        self.window.bind("<Up>", self.scrollup)
+
+    def draw(self):
+        self.canvas.delete("all")
+        for x, y, c in self.display_list:
+            if y > self.scroll + HEIGHT: continue
+            if y + VSTEP < self.scroll: continue
+            self.canvas.create_text(x, y - self.scroll, text=c)
+
+    def load(self, url):
+        headers, body = request(url)
+        text = lex(body)
+        self.display_list = layout(text)
+        self.draw()
+    
+    def scrolldown(self, e):
+        self.scroll += SCROLL_STEP
+        self.draw()
+
+    def scrollup(self, e):
+        self.scroll -= SCROLL_STEP
+        self.draw()
 
 
 class URL:
@@ -89,15 +139,17 @@ def request(url: URL):
         return request_remote(url)
 
 
-def print_html(html: str):
+def lex(html: str):
     inside_tag = False
+    text = ""
     for ch in html:
         if ch == "<":
             inside_tag = True
         elif ch == ">":
             inside_tag = False
         elif not inside_tag:
-            print(ch, end="")
+            text += ch
+    return text
 
 
 if __name__ == "__main__":
@@ -105,6 +157,5 @@ if __name__ == "__main__":
         url = URL.parse(sys.argv[1])
     else:
         url = URL.file("./index.html")
-    headers, body = request(url)
-    print(headers)
-    print_html(body)
+    Browser().load(url)
+    tkinter.mainloop()
