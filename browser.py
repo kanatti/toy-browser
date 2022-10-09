@@ -2,8 +2,16 @@ import socket
 import ssl
 import sys
 
+
 class URL:
-    def __init__(self, raw_url: str):
+    def __init__(self, scheme, host, path, port):
+        self.scheme = scheme
+        self.host = host
+        self.path = path
+        self.port = port
+
+    @staticmethod
+    def parse(raw_url: str):
         scheme, url = raw_url.split("://", 1)
         assert scheme in ["file", "http", "https"], "Unknown scheme {}".format(scheme)
 
@@ -11,22 +19,22 @@ class URL:
         path = "/" + path
         port = 80 if scheme == "http" else 443
 
-
         if ":" in host:
             host, port = host.split(":", 1)
             port = int(port)
 
-        self.scheme = scheme
-        self.host = host
-        self.path = path
-        self.port = port
-        
+        return URL(scheme, host, path, port)
+
+    @staticmethod
+    def file(path: str):
+        return URL("file", "", path, 0)
 
 
 def request_file(url: URL):
     with open(url.path, "r") as f:
         body = f.read()
     return {}, body
+
 
 def request_remote(url: URL):
     s = socket.socket(
@@ -42,9 +50,7 @@ def request_remote(url: URL):
     req_headers = {"Host": url.host, "Connection": "close", "User-Agent": "toybrowser"}
     req_body = "GET {} HTTP/1.1\r\n".format(url.path).encode("utf8")
     for key in req_headers:
-        req_body = req_body + "{}: {}\r\n".format(key, req_headers[key]).encode(
-            "utf8"
-        )
+        req_body = req_body + "{}: {}\r\n".format(key, req_headers[key]).encode("utf8")
 
     req_body = req_body + "\r\n".encode("utf8")
 
@@ -75,11 +81,13 @@ def request_remote(url: URL):
 
     return headers, body
 
+
 def request(url: URL):
     if url.scheme == "file":
         return request_file(url)
     else:
         return request_remote(url)
+
 
 def print_html(html: str):
     inside_tag = False
@@ -93,7 +101,10 @@ def print_html(html: str):
 
 
 if __name__ == "__main__":
-    url = URL(sys.argv[1])
+    if len(sys.argv) > 1:
+        url = URL.parse(sys.argv[1])
+    else:
+        url = URL.file("./index.html")
     headers, body = request(url)
     print(headers)
     print_html(body)
