@@ -2,6 +2,7 @@ import socket
 import ssl
 import sys
 
+
 def request(url):
     scheme, url = url.split("://", 1)
     assert scheme in ["http", "https"], "Unknown scheme {}".format(scheme)
@@ -24,11 +25,20 @@ def request(url):
         s = ctx.wrap_socket(s, server_hostname=host)
 
     s.connect((host, port))
-    s.send(
-        "GET {} HTTP/1.1\r\n".format(path).encode("utf8")
-        + "Host: {}\r\n".format(host).encode("utf8")
-        + "Connection: close\r\n\r\n".encode("utf8")
-    )
+
+    headers = {"Host": host, "Connection": "close", "User-Agent": "toybrowser"}
+    request_body = "GET {} HTTP/1.1\r\n".format(path).encode("utf8")
+    for key in headers:
+        request_body = request_body + "{}: {}\r\n".format(key, headers[key]).encode(
+            "utf8"
+        )
+
+    request_body = request_body + "\r\n".encode("utf8")
+
+    print("making request")
+    print(request_body.decode("utf8"))
+
+    s.send(request_body)
 
     response = s.makefile("r", encoding="utf8", newline="\r\n")
 
