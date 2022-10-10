@@ -1,23 +1,65 @@
+from dataclasses import dataclass
 import socket
 import ssl
 import sys
 import tkinter
+import tkinter.font
+from typing import List
 
 HSTEP, VSTEP = 13, 18
 WIDTH, HEIGHT = 800, 600
 SCROLL_STEP = 100
 
 
-def layout(text):
-    display_list = []
-    cursor_x, cursor_y = HSTEP, VSTEP
-    for c in text:
-        display_list.append((cursor_x, cursor_y, c))
-        cursor_x += HSTEP
-        if cursor_x >= WIDTH - HSTEP:
-            cursor_x = HSTEP
-            cursor_y += VSTEP
-    return display_list
+@dataclass
+class Text:
+    text: str
+
+
+@dataclass
+class Tag:
+    tag: str
+
+
+Token = Text | Tag
+
+
+class Layout:
+    def __init__(self, tokens: List[Token]):
+        self.display_list = []
+        self.cursor_x = HSTEP
+        self.cursor_y = VSTEP
+        self.weight = "normal"
+        self.style = "roman"
+        self.size = 16
+        for token in tokens:
+            self.process_token(token)
+
+    def process_token(self, token):
+        if isinstance(token, Text):
+            self.process_text(token)
+        elif token.tag == "i":
+            self.style = "italic"
+        elif token.tag == "/i":
+            self.style = "roman"
+        elif token.tag == "b":
+            self.weight = "bold"
+        elif token.tag == "/b":
+            self.weight = "normal"
+
+    def process_text(self, token):
+        font = tkinter.font.Font(
+            size=self.size,
+            weight=self.weight,
+            slant=self.style,
+        )
+        for word in token.text.split():
+            w = font.measure(word)
+            if self.cursor_x + w >= WIDTH - HSTEP:
+                self.cursor_y += font.metrics("linespace") * 1.25
+                self.cursor_x = HSTEP
+            self.display_list.append((self.cursor_x, self.cursor_y, word, font))
+            self.cursor_x += w + font.measure(" ")
 
 
 class Browser:
@@ -33,17 +75,21 @@ class Browser:
 
     def draw(self):
         self.canvas.delete("all")
-        for x, y, c in self.display_list:
-            if y > self.scroll + HEIGHT: continue
-            if y + VSTEP < self.scroll: continue
-            self.canvas.create_text(x, y - self.scroll, text=c)
+        for x, y, word, font in self.display_list:
+            if y > self.scroll + HEIGHT:
+                continue
+            if y + VSTEP < self.scroll:
+                continue
+            self.canvas.create_text(
+                x, y - self.scroll, text=word, font=font, anchor="nw"
+            )
 
     def load(self, url):
         headers, body = request(url)
-        text = lex(body)
-        self.display_list = layout(text)
+        tokens = lex(body)
+        self.display_list = Layout(tokens).display_list
         self.draw()
-    
+
     def scrolldown(self, e):
         self.scroll += SCROLL_STEP
         self.draw()
@@ -139,17 +185,25 @@ def request(url: URL):
         return request_remote(url)
 
 
-def lex(html: str):
-    inside_tag = False
+def lex(html: str) -> List[Token]:
+    tokens = []
+    in_tag = False
     text = ""
-    for ch in html:
-        if ch == "<":
-            inside_tag = True
-        elif ch == ">":
-            inside_tag = False
-        elif not inside_tag:
-            text += ch
-    return text
+    for c in html:
+        if c == "<":
+            in_tag = True
+            if text:
+                tokens.append(Text(text))
+            text = ""
+        elif c == ">":
+            in_tag = False
+            tokens.append(Tag(text))
+            text = ""
+        else:
+            text += c
+    if not in_tag and text:
+        tokens.append(Text(text))
+    return tokens
 
 
 if __name__ == "__main__":
