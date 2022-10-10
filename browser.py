@@ -23,6 +23,20 @@ class Tag:
 
 Token = Text | Tag
 
+FONTS_CACHE = {}
+
+
+def get_font(size, weight, slant):
+    key = (size, weight, slant)
+    if key not in FONTS_CACHE:
+        font = font = tkinter.font.Font(
+            size=size,
+            weight=weight,
+            slant=slant,
+        )
+        FONTS_CACHE[key] = font
+    return FONTS_CACHE[key]
+
 
 class Layout:
     def __init__(self, tokens: List[Token]):
@@ -44,11 +58,7 @@ class Layout:
             self.process_tag(token)
 
     def process_text(self, token):
-        font = tkinter.font.Font(
-            size=self.size,
-            weight=self.weight,
-            slant=self.style,
-        )
+        font = get_font(self.size, self.weight, self.style)
         for word in token.text.split():
             w = font.measure(word)
             if self.cursor_x + w >= WIDTH - HSTEP:
@@ -81,7 +91,8 @@ class Layout:
                 self.cursor_y += VSTEP
 
     def flush(self):
-        if not self.line_buf: return
+        if not self.line_buf:
+            return
         metrics = [font.metrics() for x, word, font in self.line_buf]
         max_ascent = max(metric["ascent"] for metric in metrics)
         max_descent = max(metric["descent"] for metric in metrics)
@@ -92,7 +103,6 @@ class Layout:
         self.cursor_x = HSTEP
         self.cursor_y = baseline + 1.25 * max_descent
         self.line_buf = []
-
 
 
 class Browser:
