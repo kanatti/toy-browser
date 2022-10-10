@@ -32,20 +32,16 @@ class Layout:
         self.weight = "normal"
         self.style = "roman"
         self.size = 16
+        self.line_buf = []
         for token in tokens:
             self.process_token(token)
+        self.flush()
 
     def process_token(self, token):
         if isinstance(token, Text):
             self.process_text(token)
-        elif token.tag == "i":
-            self.style = "italic"
-        elif token.tag == "/i":
-            self.style = "roman"
-        elif token.tag == "b":
-            self.weight = "bold"
-        elif token.tag == "/b":
-            self.weight = "normal"
+        else:
+            self.process_tag(token)
 
     def process_text(self, token):
         font = tkinter.font.Font(
@@ -56,10 +52,47 @@ class Layout:
         for word in token.text.split():
             w = font.measure(word)
             if self.cursor_x + w >= WIDTH - HSTEP:
-                self.cursor_y += font.metrics("linespace") * 1.25
-                self.cursor_x = HSTEP
-            self.display_list.append((self.cursor_x, self.cursor_y, word, font))
+                self.flush()
+            self.line_buf.append((self.cursor_x, word, font))
             self.cursor_x += w + font.measure(" ")
+
+    def process_tag(self, token):
+        match token.tag:
+            case "i":
+                self.style = "italic"
+            case "/i":
+                self.style = "roman"
+            case "b":
+                self.weight = "bold"
+            case "/b":
+                self.weight = "normal"
+            case "small":
+                self.size -= 2
+            case "/small":
+                self.size += 2
+            case "big":
+                self.size += 4
+            case "/big":
+                self.size -= 4
+            case "br":
+                self.flush()
+            case "/p":
+                self.flush()
+                self.cursor_y += VSTEP
+
+    def flush(self):
+        if not self.line_buf: return
+        metrics = [font.metrics() for x, word, font in self.line_buf]
+        max_ascent = max(metric["ascent"] for metric in metrics)
+        max_descent = max(metric["descent"] for metric in metrics)
+        baseline = self.cursor_y + 1.25 * max_ascent
+        for x, word, font in self.line_buf:
+            y = baseline - font.metrics("ascent")
+            self.display_list.append((x, y, word, font))
+        self.cursor_x = HSTEP
+        self.cursor_y = baseline + 1.25 * max_descent
+        self.line_buf = []
+
 
 
 class Browser:
