@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 import socket
 import ssl
 import sys
@@ -6,22 +5,11 @@ import tkinter
 import tkinter.font
 from typing import List
 
+from htmlparser import Element, HTMLParser, Node, Text
+
 HSTEP, VSTEP = 13, 18
 WIDTH, HEIGHT = 800, 600
 SCROLL_STEP = 100
-
-
-@dataclass
-class Text:
-    text: str
-
-
-@dataclass
-class Tag:
-    tag: str
-
-
-Token = Text | Tag
 
 FONTS_CACHE = {}
 
@@ -39,7 +27,7 @@ def get_font(size, weight, slant):
 
 
 class Layout:
-    def __init__(self, tokens: List[Token]):
+    def __init__(self, doc: Node):
         self.display_list = []
         self.cursor_x = HSTEP
         self.cursor_y = VSTEP
@@ -47,48 +35,54 @@ class Layout:
         self.style = "roman"
         self.size = 16
         self.line_buf = []
-        for token in tokens:
-            self.process_token(token)
+        self.process_node(doc)
         self.flush()
 
-    def process_token(self, token):
-        if isinstance(token, Text):
-            self.process_text(token)
-        else:
-            self.process_tag(token)
+    def process_node(self, node):
+        if isinstance(node, Text):
+            self.process_text(node.text)
+        elif isinstance(node, Element):
+            self.open_tag(node.tag)
+            for child in node.children:
+                self.process_node(child)
+            self.close_tag(node.tag)
 
-    def process_text(self, token):
+    def process_text(self, text: str):
         font = get_font(self.size, self.weight, self.style)
-        for word in token.text.split():
+        for word in text.split():
             w = font.measure(word)
             if self.cursor_x + w >= WIDTH - HSTEP:
                 self.flush()
             self.line_buf.append((self.cursor_x, word, font))
             self.cursor_x += w + font.measure(" ")
 
-    def process_tag(self, token):
-        match token.tag:
+    def open_tag(self, tag):
+        match tag:
             case "i":
                 self.style = "italic"
-            case "/i":
-                self.style = "roman"
             case "b":
                 self.weight = "bold"
-            case "/b":
-                self.weight = "normal"
             case "small":
                 self.size -= 2
-            case "/small":
-                self.size += 2
             case "big":
                 self.size += 4
-            case "/big":
-                self.size -= 4
             case "br":
                 self.flush()
-            case "/p":
+
+    def close_tag(self, tag):
+        match tag:
+            case "i":
+                self.style = "roman"
+            case "b":
+                self.weight = "normal"
+            case "small":
+                self.size += 2
+            case "big":
+                self.size -= 4
+            case "p":
                 self.flush()
                 self.cursor_y += VSTEP
+
 
     def flush(self):
         if not self.line_buf:
@@ -129,8 +123,8 @@ class Browser:
 
     def load(self, url):
         headers, body = request(url)
-        tokens = lex(body)
-        self.display_list = Layout(tokens).display_list
+        doc = HTMLParser(body).parse()
+        self.display_list = Layout(doc).display_list
         self.draw()
 
     def scrolldown(self, e):
@@ -226,27 +220,6 @@ def request(url: URL):
         return request_file(url)
     else:
         return request_remote(url)
-
-
-def lex(html: str) -> List[Token]:
-    tokens = []
-    in_tag = False
-    text = ""
-    for c in html:
-        if c == "<":
-            in_tag = True
-            if text:
-                tokens.append(Text(text))
-            text = ""
-        elif c == ">":
-            in_tag = False
-            tokens.append(Tag(text))
-            text = ""
-        else:
-            text += c
-    if not in_tag and text:
-        tokens.append(Text(text))
-    return tokens
 
 
 if __name__ == "__main__":
